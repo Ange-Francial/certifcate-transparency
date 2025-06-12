@@ -1,0 +1,6 @@
+certstream
+selenium
+requests
+python-Levenshtein : est une bibliothèque Python qui implémente l’algorithme de distance de Levenshtein, aussi appelée distance d’édition. Cela permet de mesurer à quel point deux chaînes de caractères sont proches (en nombre de lettres différentes, ajoutées, supprimées ou modifiées)
+dnspython
+whois
