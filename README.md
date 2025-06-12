@@ -6,7 +6,7 @@ Ce script détecte en temps réel des domaines de phishing potentiels en analysa
 
 ## Dépendances
 
-- Ubuntu
+- Linux (Ubuntu)
 - Python 3
 - Firefox + Geckodriver
 
