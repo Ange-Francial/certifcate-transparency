@@ -1,2 +1,8 @@
 /phishing-env
 /zdns
+package-lock.json
+package.json
+node_modules
+/draft
+/screenshots
+/certstream-server-go

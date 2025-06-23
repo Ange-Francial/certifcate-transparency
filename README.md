@@ -1,57 +1,151 @@
-# Phishing Detector — CT Log Analysis Tool
+Voici un **README.md prêt à l'emploi** reprenant toutes les informations détaillées que nous avons vues :
 
-## Description
+---
 
-Ce script détecte en temps réel des domaines de phishing potentiels en analysant les logs de certificats SSL via Certificate Transparency (CT), à l’aide de CertStream.
+# 🔥 **Phishing Detector via CT Logs**
 
-## Dépendances
+*Un outil de surveillance en temps réel des Certificate Transparency Logs pour identifier des domaines suspects.*
 
-- Linux (Ubuntu)
-- Python 3
-- Firefox + Geckodriver
+---
 
-## Installation :
+## 🎯 **Objectif du projet**
 
-### 1. Installer Python et pip
-```bash
-sudo apt update
-sudo apt install python3 python3-pip
+Ce projet permet de :
+
+* Se **connecter à un serveur de CT Logs** (Certificate Transparency) via WebSocket.
+* **Filtrer** les domaines suspects basés sur des mots-clés spécifiques (`telegram`, `teleg`, `tele`).
+* Exclure automatiquement les **wildcards (`*.`)** ainsi que les **domaines `.dev`**.
+* Faire des **vérifications DNS** (`A record`) des domaines suspects.
+* Générer des **captures d’écran** des sites suspects.
+* Exporter toutes les informations utiles (`domaine`, `IP(s)`, `capture`) vers un fichier `results.csv`.
+* Gérer automatiquement la **reconnexion WebSocket** en cas de coupure.
+
+---
+
+## 🗂️ **Arborescence du Projet**
+
+```
+certifcate-transparency/
+├─ main.py                      # Script principal du listener
+├─ results.csv                  # Fichier de résultats (domaine, IP, capture d’écran)
+├─ screenshots/                # Dossier des captures d’écran
+├─ test-code/
+│  └─ test_screenshot.py       # Script de test de capture d’écran
+├─ certstream-server-go/       # Serveur certstream
+├─ requirements.txt            # Dépendances Python
+├─ README.md                    # Documentation du projet
 ```
 
-### 2. Créer un environnement virtuel
+---
+
+## ⚡️ **Composants du Projet**
+
+### 1️⃣ **certstream-server-go**
+
+✅ Émet un flux de domaines extraits des CT Logs officiels.
+▶️ Endpoint utilisé : `ws://localhost:8080/domains-only`
+
+#### Lancement :
+
 ```bash
-python3 -m venv phishing-env
-source phishing-env/bin/activate
+go build -o certstream-server ./cmd/certstream-server-go
+cp config.sample.yaml config.yaml
+./certstream-server
 ```
 
-### 3. Installer les dépendances Python
+---
+
+### 2️⃣ **main.py**
+
+✅ Consomme le flux WebSocket du serveur certstream.
+✅ Analyse en temps réel chaque nom de domaine.
+✅ Critères :
+
+* Domaine contenant `telegram|teleg|tele`.
+* Exclut : wildcard (`*.`), `.dev`.
+  ✅ Actions :
+* Résolution IP via DNS.
+* Capture d’écran du site.
+* Export des résultats (`results.csv`).
+
+---
+
+### 3️⃣ **test\_screenshot.py**
+
+✅ Script isolé pour tester la capture d’écran du site.
+
+---
+
+### 4️⃣ **results.csv**
+
+✅ Export des résultats :
+
+| Domain         | Resolved IP(s)                  | Screenshot                     |
+| -------------- | ------------------------------- | ------------------------------ |
+| telegfvcg.baby | 104.21.51.231, 172.67.190.161   | screenshots/telegfvcg_baby.png |
+
+---
+
+## ⚡️ **Pré-requis Techniques**
+
+* 🐍 **Python 3.12+**
+* 🐳 **Go 1.22+**
+* 🌐 **certstream-server-go** compilé
+* ⚡️ **Google Chrome / Chromium** + `chromedriver` installé
+* ✅ Dépendances Python :
+
+  ```
+  websockets
+  dnspython
+  selenium
+  ```
+
+---
+
+## 🚀 **Installation & Exécution**
+
+### 1️⃣ Lancement du serveur `certstream-server-go`
+
 ```bash
-pip install certstream selenium requests python-Levenshtein dnspython whois
+cd certstream-server-go/
+go build -o certstream-server ./cmd/certstream-server-go
+cp config.sample.yaml config.yaml
+./certstream-server
 ```
 
-### 4. Installer ZDNS (pour la résolution DNS rapide)
+### 2️⃣ Installation des dépendances Python
 
-#### Installer Go
 ```bash
-sudo apt install golang-go
+pip install -r requirements.txt
 ```
 
-#### Cloner et compiler ZDNS
+### 3️⃣ Exécution du listener
+
 ```bash
-git clone https://github.com/zmap/zdns.git
-cd zdns
-go build
-sudo cp zdns /usr/local/bin/
-cd ..
+python3 main.py
 ```
 
-### 5. Installer Geckodriver (driver pour Selenium + Firefox)
-```bash
-sudo apt install wget tar
-wget https://github.com/mozilla/geckodriver/releases/download/v0.36.0/geckodriver-v0.36.0-linux64.tar.gz
-tar -xvzf geckodriver-v0.36.0-linux64.tar.gz 
-chmod +x geckodriver
-sudo mv geckodriver /usr/local/bin/
+---
 
-geckodriver --version
+## ⚡️ **Exemple de Logs**
+
 ```
+[FOUND] ww25.xwwh.yd10-telegram.org
+[+] Screenshot saved: screenshots/ww25_xwwh_yd10-telegram_org.png
+[SAVED] ww25.xwwh.yd10-telegram.org
+[-] Domaine ignoré (wildcard/.dev): *.lordserialru21.biz
+[-] Domaine ignoré (wildcard/.dev): *.frc-stage.com
+
+```
+
+---
+
+## ⚡️ **Gestion des erreurs intégrée**
+
+✅ Wildcards (`*.`) ➔ Ignorés automatiquement
+✅ Domaines `.dev` ➔ Ignorés automatiquement
+✅ Déconnexion du WebSocket ➔ Reconnexion après 5s
+✅ Timeouts de capture d’écran ➔ Gérés avec `try/except`
+✅ Échec de résolution DNS ➔ Domaine sauté
+
+---

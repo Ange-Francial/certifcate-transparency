@@ -1,54 +1,44 @@
-import certstream
-import Levenshtein
+import asyncio
+import websockets
+import json
+import re
 import dns.resolver
-import whois
-import csv
 import os
+import csv
 from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 
-# === Configurations ===
+# CONFIG
+URL = "ws://localhost:8080/domains-only"
+KEYWORDS = ["telegram", "teleg", "-tg", "telep"]
 
-keywords = {
-    "login": 25, "signin": 25, "account": 25, "verify": 25,
-    "paypal": 60, "appleid": 70, "bankofamerica": 60,
-    "outlook": 60, "microsoft": 60, "netflix": 60,
-    "amazon": 60, "webmail": 50, "secure": 30
-}
-
-suspicious_tlds = [".xyz", ".top", ".click", ".buzz", ".icu", ".fit", ".baby", ".online", ".skin"]
-score_threshold = 70
-
-
-# === Fonctions ===
-
-def score_domain(domain):
-    score = 0
-    domain = domain.lower()
-    parts = domain.replace('.', '-').split('-')
-    for part in parts:
-        for keyword, val in keywords.items():
-            if keyword in part or (len(part) >= 6 and Levenshtein.distance(part, keyword) <= 1):
-                score += val
-    for tld in suspicious_tlds:
-        if domain.endswith(tld):
-            score += 30
-    return score
-
-
+# UTILS
 def resolves(domain):
+    """Check if the domain resolves to an A record."""
     try:
         result = dns.resolver.resolve(domain, 'A')
-        return len(result) > 0
+        return [str(rdata) for rdata in result]
     except:
-        return False
+        return []
 
 
 def take_screenshot(domain):
+    """Take a screenshot of the given domain (skip .dev)."""
+    if domain.endswith(".dev") or "*" in domain:
+        print(f"[-] Domaine ignoré (wildcard ou .dev): {domain}")
+        return None
+
     url = f"http://{domain}"
     options = Options()
     options.headless = True
-    driver = webdriver.Firefox(options=options)
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.binary_location = "/usr/bin/chromium-browser"
+
+    service = Service("/usr/bin/chromedriver")  # Chemin du chromedriver
+    driver = webdriver.Chrome(service=service, options=options)
+
     try:
         driver.set_page_load_timeout(10)
         driver.get(url)
@@ -64,45 +54,48 @@ def take_screenshot(domain):
         driver.quit()
 
 
-def get_registrar(domain):
-    try:
-        info = whois.whois(domain)
-        return info.registrar if info else "Unknown"
-    except:
-        return "Unknown"
-
-
-def save_result(domain, screenshot, registrar):
+def save_result(domain, ips, screenshot_file):
+    """Save the result to results.csv."""
     file_exists = os.path.isfile("results.csv")
     with open("results.csv", "a", newline='') as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(["Domain", "Screenshot", "Registrar"])
-        writer.writerow([domain, screenshot, registrar])
+            writer.writerow(["Domain", "Resolved IP(s)", "Screenshot"])
+        writer.writerow([domain, ", ".join(ips), screenshot_file or "None"])
+    print(f"[SAVED] {domain}")
+
+# MAIN LOOP
+async def listen():
+    """Connect and listen to WebSocket stream, restart on disconnect."""
+    while True:
+        try:
+            async with websockets.connect(URL) as ws:
+                async for message in ws:
+                    data = json.loads(message)
+
+                    for domain in data.get("data", []):  # domains-only stream
+                        if "*" in domain or domain.endswith(".dev"):
+                            print(f"[-] Domaine ignoré (wildcard/.dev): {domain}")
+                            continue
+                        if any(re.search(keyword, domain, re.IGNORECASE) for keyword in KEYWORDS):
+                            print(f"[FOUND] {domain}")
+
+                            # Résolution
+                            ips = resolves(domain)
+
+                            # Screenshot
+                            screenshot_file = take_screenshot(domain)
+
+                            # Sauvegarde
+                            save_result(domain, ips, screenshot_file)
+
+        except websockets.exceptions.ConnectionClosedError as e:
+            print(f"[!] WebSocket fermé ({e}), reconnexion dans 5s...")
+            await asyncio.sleep(5)
+        except Exception as e:
+            print(f"[ERR] {e}, attente 5s...")
+            await asyncio.sleep(5)
 
 
-def process_domain(domain):
-    if not resolves(domain):
-        return
-    screenshot = take_screenshot(domain)
-    registrar = get_registrar(domain)
-    save_result(domain, screenshot, registrar)
-
-
-# === CertStream Listener ===
-
-def certstream_callback(message, context):
-    if message['message_type'] != "certificate_update":
-        return
-    domains = message['data']['leaf_cert']['all_domains']
-    for domain in domains:
-        if score_domain(domain) >= score_threshold:
-            print(f"[!] Suspicious domain: {domain}")
-            process_domain(domain)
-
-
-# === Main Execution ===
-
-if __name__ == "__main__":
-    print("[*] Starting phishing detector...")
-    certstream.listen_for_events(certstream_callback, url='wss://certstream.calidog.io/')
+if __name__ == '__main__':
+    asyncio.run(listen())

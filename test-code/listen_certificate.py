@@ -1,14 +1,17 @@
-import certstream
+import asyncio
+import websockets
+import json
+import re
 
-def print_domains(message, context):
-    if message['message_type'] != "certificate_update":
-        return
+KEYWORDS = ["telegram", "teleg", "-tg", "telep"]
 
-    all_domains = message['data']['leaf_cert'].get('all_domains', [])
-    if all_domains:
-        print("Nouveau certificat émis pour les domaines :")
-        for domain in all_domains:
-            print(f" - {domain}")
+async def listen():
+    url = "ws://localhost:8080/domains-only"
+    async with websockets.connect(url) as ws:
+        async for message in ws:
+            data = json.loads(message)
+            for domain in data.get("data", []):  # domains-only stream returns a list
+                if any(re.search(keyword, domain, re.IGNORECASE) for keyword in KEYWORDS):
+                    print(f"[FOUND] {domain}")
 
-print("[*] Connexion à CertStream...")
-certstream.listen_for_events(print_domains, url='wss://certstream.calidog.io/')
+asyncio.run(listen())
